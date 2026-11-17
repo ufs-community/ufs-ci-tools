@@ -38,6 +38,6 @@ repos:
         pass_filenames: false
       - id: yamllint
         name: yamllint
-        entry: uv run --project tools/verify-submodules --locked yamllint --strict
+        entry: uvx yamllint@1.38.0 --strict
         language: system
         types: [yaml]

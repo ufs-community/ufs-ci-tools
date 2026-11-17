@@ -161,8 +161,11 @@ The applicable hygiene, Ruff, mypy, and YAML hook patterns are adapted from
 [`ufs-chem-assay`](https://github.com/benkozi/ufs-chem-assay).
 Python validation dependencies and the lockfile belong to this tool, not the
 repository root. Tests create temporary local Git repositories and do not depend
-on CECE, UFS-WM, or changing public branch heads. CI also invokes the actual
-composite Action against a three-level fixture and checks success and failure.
+on CECE, UFS-WM, or changing public branch heads. The tool's callable workflow,
+[`ci-verify-submodules.yaml`](../.github/workflows/ci-verify-submodules.yaml),
+runs the tests and invokes the composite Action against a three-level fixture
+to check success and failure. The root CI workflow calls it alongside the
+shared repository checks.
 
 ## Troubleshooting
 

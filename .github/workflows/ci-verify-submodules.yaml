@@ -1,8 +1,5 @@
-name: CI
-on:
-  pull_request:
-  push:
-    branches: [develop, main]
+name: Verify submodules CI
+on: workflow_call
 permissions:
   contents: read
 jobs:
@@ -14,8 +11,11 @@ jobs:
         with:
           version: '0.13.7'
           enable-cache: 'false'
-      - name: Check hooks and lockfile
-        run: uv run --project tools/verify-submodules --locked pre-commit run --all-files
+      - name: Check verifier hooks and lockfile
+        run: |
+          for hook in verify-submodules-{ruff,format,mypy,lock}; do
+            uv run --project tools/verify-submodules --locked pre-commit run "$hook" --all-files
+          done
       - name: Test verifier
         run: >-
           uv run --project tools/verify-submodules --locked --python 3.12

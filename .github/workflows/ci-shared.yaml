@@ -1,0 +1,19 @@
+name: Shared CI
+on: workflow_call
+permissions:
+  contents: read
+jobs:
+  hooks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9  # v7
+        with:
+          version: '0.13.7'
+          enable-cache: 'false'
+      - name: Run repository-wide hooks
+        run: |
+          for hook in trailing-whitespace end-of-file-fixer check-merge-conflict \
+            detect-private-key check-added-large-files yamllint; do
+            uvx pre-commit@4.7.0 run "$hook" --all-files
+          done

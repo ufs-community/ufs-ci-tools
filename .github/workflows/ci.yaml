@@ -1,0 +1,12 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+permissions:
+  contents: read
+jobs:
+  shared:
+    uses: ./.github/workflows/ci-shared.yaml
+  verify-submodules:
+    uses: ./.github/workflows/ci-verify-submodules.yaml

@@ -21,5 +21,9 @@ in `docs/<tool-name>.md`, linked from this README. Keep usage details and
 tool-specific configuration in that guide rather than expanding this overview.
 
 Pre-commit's Python hooks use the owning tool's uv project. Shared file-hygiene
-hooks use their own pre-commit-managed environments; they do not introduce a
-root Python project.
+and YAML hooks run independently of any tool's uv project.
+
+`.github/workflows/ci.yaml` owns CI triggers and calls each tool's
+`.github/workflows/ci-<tool-name>.yaml` using `workflow_call`. Each tool workflow
+owns its lint, test, and Action smoke-test jobs. The separate `ci-shared.yaml`
+workflow runs repository-wide hooks once per CI run.
