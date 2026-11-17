@@ -1,0 +1,67 @@
+name: Verify submodules CI
+on: workflow_call
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9  # v7
+        with:
+          version: '0.13.7'
+          enable-cache: 'false'
+      - name: Check verifier hooks and lockfile
+        run: |
+          for hook in verify-submodules-{ruff,format,mypy,lock}; do
+            uv run --project tools/verify-submodules --locked pre-commit run "$hook" --all-files
+          done
+      - name: Test verifier
+        run: >-
+          uv run --project tools/verify-submodules --locked --python 3.12
+          pytest tools/verify-submodules/tests
+  action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9  # v7
+        with:
+          version: '0.13.7'
+          enable-cache: 'false'
+      - name: Create offline recursive fixture and configuration
+        shell: bash
+        run: |
+          uv run --project tools/verify-submodules --locked --no-dev --python 3.12 \
+            python tools/verify-submodules/tests/fixture.py "$RUNNER_TEMP/fixture"
+          cat > "$RUNNER_TEMP/fixture/root/expected.yaml" <<'YAML'
+          submodules:
+            vendor/outer/nested/middle/leaf with spaces:
+              tag: annotated
+          YAML
+      - name: Exercise successful Action
+        uses: ./actions/verify-submodules
+        with:
+          repo-root: ${{ runner.temp }}/fixture/root
+          target-branch: main
+          config: expected.yaml
+      - name: Set a deliberately mismatching pin
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/fixture/root/expected.yaml" <<'YAML'
+          submodules:
+            vendor/outer:
+              commit: 'ffffffffffffffffffffffffffffffffffffffff'
+          YAML
+      - name: Exercise failing Action
+        id: mismatch
+        continue-on-error: true
+        uses: ./actions/verify-submodules
+        with:
+          repo-root: ${{ runner.temp }}/fixture/root
+          target-branch: main
+          config: expected.yaml
+      - name: Assert mismatch was rejected
+        if: always()
+        env:
+          OUTCOME: ${{ steps.mismatch.outcome }}
+        run: test "$OUTCOME" = failure

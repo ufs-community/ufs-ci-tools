@@ -1,0 +1,43 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: check-added-large-files
+  - repo: local
+    hooks:
+      - id: verify-submodules-ruff
+        name: verify-submodules ruff check
+        entry: uv run --project tools/verify-submodules --locked ruff check
+        language: system
+        files: ^tools/verify-submodules/.*\.py$
+      - id: verify-submodules-format
+        name: verify-submodules ruff format
+        entry: uv run --project tools/verify-submodules --locked ruff format
+        language: system
+        files: ^tools/verify-submodules/.*\.py$
+      - id: verify-submodules-mypy
+        name: verify-submodules mypy
+        entry: >-
+          uv run --project tools/verify-submodules --locked
+          mypy --config-file tools/verify-submodules/pyproject.toml
+          tools/verify-submodules/verify_submodules.py
+          tools/verify-submodules/tests
+        language: system
+        files: ^tools/verify-submodules/.*\.(py|toml)$
+        pass_filenames: false
+      - id: verify-submodules-lock
+        name: verify-submodules uv lock --check
+        entry: uv lock --project tools/verify-submodules --check
+        language: system
+        files: ^tools/verify-submodules/(pyproject\.toml|uv\.lock)$
+        pass_filenames: false
+      - id: yamllint
+        name: yamllint
+        entry: uvx yamllint@1.38.0 --strict
+        language: system
+        types: [yaml]
