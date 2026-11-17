@@ -228,7 +228,9 @@ def test_empty_repository_and_summary_escaping(tmp_path: Path) -> None:
     assert verify(root, "main", {}) == []
     summary = tmp_path / "summary.md"
     summary.write_text("Existing summary\n")
-    write_summary([Result("a|b", "", detail="<script>\nfailure")], summary)
+    write_summary(
+        [Result(path="a|b", current_sha="", detail="<script>\nfailure")], summary
+    )
     text = summary.read_text()
     assert text.startswith("Existing summary\n")
     assert "a&#124;b" in text

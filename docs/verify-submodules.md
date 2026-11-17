@@ -70,6 +70,9 @@ Unlisted submodules are still checked. Omit the configuration entirely, or use
 Invalid fields, duplicate YAML keys, conflicting pins, non-string revisions,
 and configured paths that are not discovered are errors. Quote SHA values to
 prevent YAML from interpreting an all-digit SHA as a number.
+The YAML schema is validated with strict Pydantic models; values such as a
+numeric branch name or a string `"true"` for `exclude` are rejected rather
+than coerced.
 
 Commit pins are compared directly with committed gitlinks, so they do not
 require remote advertisement or full local history. Branch and tag checks query

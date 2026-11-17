@@ -3,7 +3,7 @@ name = "ufs-verify-submodules"
 version = "0.1.0"
 description = "Verify recursive Git submodule pointers against commits, tags, or branch heads."
 requires-python = ">=3.12"
-dependencies = ["pyyaml>=6.0.2,<7"]
+dependencies = ["pydantic>=2.10,<3", "pyyaml>=6.0.2,<7"]
 
 [dependency-groups]
 dev = [

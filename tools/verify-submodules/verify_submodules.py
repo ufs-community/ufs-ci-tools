@@ -9,11 +9,19 @@ import logging
 import os
 import re
 import subprocess
-from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 from typing import Literal
 
 import yaml
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    StrictBool,
+    StrictStr,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 logger = logging.getLogger("verify_submodules")
 Status = Literal["OK", "OUT_OF_SYNC", "ERROR", "EXCLUDED"]
@@ -23,17 +31,71 @@ class VerificationError(Exception):
     """A configuration, Git, or checkout error that prevents verification."""
 
 
-@dataclass(frozen=True)
-class Rule:
-    branch: str | None = None
-    commit: str | None = None
-    tag: str | None = None
-    remote: str | None = None
-    exclude: bool = False
+class Rule(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    branch: StrictStr | None = None
+    commit: StrictStr | None = None
+    tag: StrictStr | None = None
+    remote: StrictStr | None = None
+    exclude: StrictBool = False
+
+    @field_validator("branch", "commit", "tag", "remote")
+    @classmethod
+    def validate_nonempty_strings(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("must be a nonempty string")
+        return value
+
+    @field_validator("commit")
+    @classmethod
+    def validate_commit(cls, value: str | None) -> str | None:
+        if value is not None and not re.fullmatch(
+            r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}", value
+        ):
+            raise ValueError("must be a full hexadecimal SHA")
+        return value
+
+    @field_validator("branch", "tag")
+    @classmethod
+    def validate_ref(cls, value: str | None) -> str | None:
+        if value is not None and (
+            value.startswith("-")
+            or any(char.isspace() or ord(char) < 32 for char in value)
+        ):
+            raise ValueError(f"invalid branch or tag: {value!r}")
+        return value
+
+    @field_validator("remote")
+    @classmethod
+    def validate_remote(cls, value: str | None) -> str | None:
+        if value is not None and value.startswith("-"):
+            raise ValueError("remote cannot start with '-'")
+        return value
+
+    @model_validator(mode="after")
+    def validate_policy(self) -> Rule:
+        if self.commit and self.tag:
+            raise ValueError("commit and tag are mutually exclusive")
+        if self.exclude and any((self.branch, self.commit, self.tag, self.remote)):
+            raise ValueError("excluded entries cannot set other options")
+        return self
 
 
-@dataclass
-class Result:
+class SubmoduleConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    submodules: dict[StrictStr, Rule]
+
+    @field_validator("submodules")
+    @classmethod
+    def validate_submodule_paths(cls, value: dict[str, Rule]) -> dict[str, Rule]:
+        for path in value:
+            validate_path(path)
+        return value
+
+
+class Result(BaseModel):
     path: str
     current_sha: str
     expected_sha: str | None = None
@@ -109,48 +171,10 @@ def load_config(path: Path | None) -> dict[str, Rule]:
         data = yaml.load(path.read_text(encoding="utf-8"), Loader=ConfigLoader)
     except (OSError, yaml.YAMLError) as exc:
         raise VerificationError(f"Cannot read configuration {path}: {exc}") from exc
-    if not isinstance(data, dict) or set(data) != {"submodules"}:
-        raise VerificationError(
-            "Configuration must contain only a 'submodules' mapping"
-        )
-    modules = data["submodules"]
-    if not isinstance(modules, dict):
-        raise VerificationError("'submodules' must be a mapping")
-    rules: dict[str, Rule] = {}
-    fields = {"branch", "commit", "tag", "remote", "exclude"}
-    for name, options in modules.items():
-        if not isinstance(name, str):
-            raise VerificationError("Submodule paths must be strings")
-        validate_path(name)
-        if not isinstance(options, dict) or set(options) - fields:
-            raise VerificationError(f"Invalid options for {name}; allowed: {fields}")
-        for key, value in options.items():
-            if key == "exclude":
-                if type(value) is not bool:
-                    raise VerificationError(f"{name}: exclude must be a boolean")
-            elif not isinstance(value, str) or not value.strip():
-                raise VerificationError(f"{name}: {key} must be a nonempty string")
-        rule = Rule(**options)
-        if rule.commit and rule.tag:
-            raise VerificationError(f"{name}: commit and tag are mutually exclusive")
-        if rule.exclude and set(options) != {"exclude"}:
-            raise VerificationError(
-                f"{name}: excluded entries cannot set other options"
-            )
-        if rule.commit and not re.fullmatch(
-            r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}", rule.commit
-        ):
-            raise VerificationError(f"{name}: commit must be a full hexadecimal SHA")
-        for ref in (rule.branch, rule.tag):
-            if ref and (
-                ref.startswith("-")
-                or any(char.isspace() or ord(char) < 32 for char in ref)
-            ):
-                raise VerificationError(f"{name}: invalid branch or tag: {ref!r}")
-        if rule.remote and rule.remote.startswith("-"):
-            raise VerificationError(f"{name}: remote cannot start with '-'")
-        rules[name] = rule
-    return rules
+    try:
+        return SubmoduleConfig.model_validate(data).submodules
+    except ValidationError as exc:
+        raise VerificationError(f"Invalid configuration: {exc}") from exc
 
 
 def committed_modules(repo: Path) -> list[tuple[str, str, str | None]]:
@@ -226,7 +250,7 @@ def verify(repo: Path, target_branch: str, rules: dict[str, Rule]) -> list[Resul
             full_path = f"{prefix}/{path}" if prefix else path
             seen.add(full_path)
             rule = rules.get(full_path, Rule())
-            result = Result(full_path, sha)
+            result = Result(path=full_path, current_sha=sha)
             results.append(result)
             if rule.exclude:
                 excluded.add(full_path)
@@ -279,7 +303,11 @@ def verify(repo: Path, target_branch: str, rules: dict[str, Rule]) -> list[Resul
     for path in sorted(set(rules) - seen):
         if not any(path.startswith(f"{item}/") for item in excluded):
             results.append(
-                Result(path, "", detail="Configured path was not discovered")
+                Result(
+                    path=path,
+                    current_sha="",
+                    detail="Configured path was not discovered",
+                )
             )
     return results
 
@@ -336,7 +364,11 @@ def main(argv: list[str] | None = None) -> int:
         if not results:
             logger.info("No submodules found")
         if args.json:
-            print(json.dumps([asdict(result) for result in results], indent=2))
+            print(
+                json.dumps(
+                    [result.model_dump(mode="json") for result in results], indent=2
+                )
+            )
         if args.step_summary:
             write_summary(results, args.step_summary)
     except (VerificationError, OSError) as exc:
