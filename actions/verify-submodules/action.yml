@@ -1,0 +1,44 @@
+name: Verify submodule commits
+description: Verify recursive committed submodule pointers using an isolated uv project.
+inputs:
+  repo-root:
+    description: Path to the consumer repository checkout.
+    required: false
+    default: ${{ github.workspace }}
+  config:
+    description: Optional YAML configuration path, relative to repo-root.
+    required: false
+    default: ''
+  target-branch:
+    description: Default target branch when no pin or .gitmodules branch is configured.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+      with:
+        python-version: '3.12'
+    - name: Install uv
+      shell: bash
+      run: python -m pip install --disable-pip-version-check 'uv==0.13.7'
+    - name: Verify committed pointers
+      shell: bash
+      env:
+        TOOL_PROJECT: ${{ github.action_path }}/../../tools/verify-submodules
+        VERIFY_REPO: ${{ inputs.repo-root }}
+        VERIFY_CONFIG: ${{ inputs.config }}
+        VERIFY_BRANCH: ${{ inputs.target-branch }}
+        UV_PYTHON_DOWNLOADS: never
+      run: |
+        args=(--repo-root "$VERIFY_REPO" --target-branch "$VERIFY_BRANCH")
+        if [[ -n "$VERIFY_CONFIG" ]]; then
+          if [[ "$VERIFY_CONFIG" = /* ]]; then
+            args+=(--config "$VERIFY_CONFIG")
+          else
+            args+=(--config "$VERIFY_REPO/$VERIFY_CONFIG")
+          fi
+        fi
+        args+=(--step-summary "$GITHUB_STEP_SUMMARY")
+        uv run --project "$TOOL_PROJECT" --locked --no-dev --python 3.12 \
+          python "$TOOL_PROJECT/verify_submodules.py" "${args[@]}"
