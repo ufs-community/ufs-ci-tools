@@ -15,11 +15,13 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Set up uv
-      uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9  # v7
+    - name: Set up Python
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
       with:
-        version: '0.13.7'
-        enable-cache: 'false'
+        python-version: '3.12'
+    - name: Install uv
+      shell: bash
+      run: python -m pip install --disable-pip-version-check 'uv==0.13.7'
     - name: Verify committed pointers
       shell: bash
       env:
@@ -27,6 +29,7 @@ runs:
         VERIFY_REPO: ${{ inputs.repo-root }}
         VERIFY_CONFIG: ${{ inputs.config }}
         VERIFY_BRANCH: ${{ inputs.target-branch }}
+        UV_PYTHON_DOWNLOADS: never
       run: |
         args=(--repo-root "$VERIFY_REPO" --target-branch "$VERIFY_BRANCH")
         if [[ -n "$VERIFY_CONFIG" ]]; then
